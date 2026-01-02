@@ -5,25 +5,6 @@ let path = require("path");
 let cookieParser = require("cookie-parser");
 
 
-
-// 1️⃣ Load env FIRST
-let envResult = dotenv.config();
-if (envResult.error) {
-  console.error("❌ Failed to load .env file");
-  process.exit(1);
-}
-
-
-// Optional hard-fail (recommended)
-if (
-  !process.env.CLOUDINARY_CLOUD_NAME ||
-  !process.env.CLOUDINARY_API_KEY ||
-  !process.env.CLOUDINARY_API_SECRET
-) {
-  console.error("❌ Cloudinary environment letiables are missing");
-  process.exit(1);
-}
-
 // 3️⃣ Now load rest of app
 let connectDb = require("./config/db");
 let errorHandler = require("./middlewares/errorHandler");
