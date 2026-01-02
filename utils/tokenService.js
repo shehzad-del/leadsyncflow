@@ -10,12 +10,7 @@ function verifyAuthToken(token) {
   return jwt.verify(token, process.env.JWT_SECRET);
 }
 
-function decodeAuthToken(token) {
-  return jwt.decode(token);
-}
-
 module.exports = {
   signAuthToken: signAuthToken,
-  verifyAuthToken: verifyAuthToken,
-  decodeAuthToken: decodeAuthToken
+  verifyAuthToken: verifyAuthToken
 };

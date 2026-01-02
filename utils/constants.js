@@ -1,4 +1,4 @@
-var departments = [
+let departments = [
   'Development',
   'IT',
   'Marketing&SEO',
@@ -11,7 +11,7 @@ var departments = [
   'Medical Billing'
 ];
 
-var sexOptions = ['male', 'female'];
+let sexOptions = ['male', 'female'];
 
 module.exports = {
   departments: departments,

@@ -1,13 +1,15 @@
-var bcrypt = require("bcryptjs");
-var User = require("../models/User");
-var BlacklistedToken = require("../models/BlacklistedToken");
+let bcrypt = require("bcryptjs");
+let User = require("../models/User");
 
-var statusCodes = require("../utils/statusCodes");
-var httpError = require("../utils/httpError");
-var asyncHandler = require("../middlewares/asyncHandler");
-var constants = require("../utils/constants");
-var cloudinaryUtil = require("../utils/cloudinary");
-var tokenService = require("../utils/tokenService");
+let statusCodes = require("../utils/statusCodes");
+let httpError = require("../utils/httpError");
+let asyncHandler = require("../middlewares/asyncHandler");
+let constants = require("../utils/constants");
+let tokenService = require("../utils/tokenService");
+
+/* =========================
+   Helpers
+========================= */
 
 function safeString(value) {
   if (value === undefined || value === null) return "";
@@ -27,7 +29,7 @@ function isValidEmail(email) {
 }
 
 function isAllowedCompanyEmail(email) {
-  var domain = "@globaldigitsolutions.com";
+  let domain = "@globaldigitsolutions.com";
   if (!email) return false;
   return String(email).toLowerCase().endsWith(domain);
 }
@@ -38,43 +40,49 @@ function isInList(value, list) {
 }
 
 function getSaltRounds() {
-  var rounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "10", 10);
+  let rounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "10", 10);
   if (!rounds || isNaN(rounds)) return 10;
   if (rounds < 8) return 10;
   if (rounds > 14) return 12;
   return rounds;
 }
 
-async function uploadProfileImage(req) {
-  if (!req.file || !req.file.buffer) {
-    return { url: "", publicId: "" };
-  }
+function setAuthCookie(res, token) {
+  let maxAgeMs = 12 * 60 * 60 * 1000; // 12 hours
 
-  try {
-    var uploaded = await cloudinaryUtil.uploadBuffer(req.file.buffer, "leadsyncflow_profiles");
-    return {
-      url: uploaded && uploaded.secure_url ? uploaded.secure_url : "",
-      publicId: uploaded && uploaded.public_id ? uploaded.public_id : ""
-    };
-  } catch (e) {
-    throw httpError(statusCodes.BAD_REQUEST, "Profile image upload failed");
-  }
+  res.cookie("authToken", token, {
+    httpOnly: false, // frontend clears it
+    sameSite: "lax",
+    secure: false, // true in production (https)
+    maxAge: maxAgeMs,
+  });
 }
 
+/* =========================
+   Validation
+========================= */
+
 function validateSignupInput(body) {
-  var data = {
+  let data = {
     name: safeString(body.name),
     email: safeEmail(body.email),
     sex: safeLower(body.sex),
     department: safeString(body.department),
-    password: body.password === undefined || body.password === null ? "" : String(body.password),
-    confirmPassword: body.confirmPassword === undefined || body.confirmPassword === null ? "" : String(body.confirmPassword)
+    password: body.password ? String(body.password) : "",
+    confirmPassword: body.confirmPassword ? String(body.confirmPassword) : "",
   };
 
-  var sexOptions = constants && constants.sexOptions ? constants.sexOptions : null;
-  var departments = constants && constants.departments ? constants.departments : null;
+  let sexOptions = constants.sexOptions;
+  let departments = constants.departments;
 
-  if (!data.name || !data.email || !data.sex || !data.department || !data.password || !data.confirmPassword) {
+  if (
+    !data.name ||
+    !data.email ||
+    !data.sex ||
+    !data.department ||
+    !data.password ||
+    !data.confirmPassword
+  ) {
     return { ok: false, message: "All fields are required" };
   }
 
@@ -83,7 +91,10 @@ function validateSignupInput(body) {
   }
 
   if (!isAllowedCompanyEmail(data.email)) {
-    return { ok: false, message: "Only @globaldigitsolutions.com emails are allowed" };
+    return {
+      ok: false,
+      message: "Only @globaldigitsolutions.com emails are allowed",
+    };
   }
 
   if (!isInList(data.sex, sexOptions)) {
@@ -106,9 +117,9 @@ function validateSignupInput(body) {
 }
 
 function validateLoginInput(body) {
-  var data = {
+  let data = {
     email: safeEmail(body.email),
-    password: body.password === undefined || body.password === null ? "" : String(body.password)
+    password: body.password ? String(body.password) : "",
   };
 
   if (!data.email || !data.password) {
@@ -120,68 +131,79 @@ function validateLoginInput(body) {
   }
 
   if (!isAllowedCompanyEmail(data.email)) {
-    return { ok: false, message: "Only @globaldigitsolutions.com emails are allowed" };
+    return {
+      ok: false,
+      message: "Only @globaldigitsolutions.com emails are allowed",
+    };
   }
 
   return { ok: true, data: data };
 }
 
-var signup = asyncHandler(async function (req, res, next) {
-  var validation = validateSignupInput(req.body);
-  if (!validation.ok) return next(httpError(statusCodes.BAD_REQUEST, validation.message));
+/* =========================
+   Controllers
+========================= */
 
-  var data = validation.data;
-
-  var existing = await User.findOne({ email: data.email }).select("_id");
-  if (existing) return next(httpError(statusCodes.CONFLICT, "Email already registered"));
-
-  var profileImage = await uploadProfileImage(req);
-
-  var saltRounds = getSaltRounds();
-  var passwordHash = await bcrypt.hash(data.password, saltRounds);
-
-  try {
-    var user = await User.create({
-      name: data.name,
-      email: data.email,
-      sex: data.sex,
-      department: data.department,
-      profileImage: profileImage,
-      passwordHash: passwordHash
-    });
-
-    res.status(statusCodes.CREATED).json({
-      success: true,
-      message: "Signup successful",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        sex: user.sex,
-        department: user.department,
-        profileImage: user.profileImage && user.profileImage.url ? user.profileImage.url : ""
-      }
-    });
-  } catch (err) {
-    if (err && err.code === 11000) return next(httpError(statusCodes.CONFLICT, "Email already registered"));
-    next(err);
+let signup = asyncHandler(async function (req, res, next) {
+  let validation = validateSignupInput(req.body);
+  if (!validation.ok) {
+    return next(httpError(statusCodes.BAD_REQUEST, validation.message));
   }
+
+  let data = validation.data;
+
+  let existing = await User.findOne({ email: data.email }).select("_id");
+  if (existing) {
+    return next(httpError(statusCodes.CONFLICT, "Email already registered"));
+  }
+
+  let passwordHash = await bcrypt.hash(data.password, getSaltRounds());
+
+  let user = await User.create({
+    name: data.name,
+    email: data.email,
+    sex: data.sex,
+    department: data.department,
+    profileImage: { url: "", publicId: "" }, // image later from dashboard
+    passwordHash: passwordHash,
+  });
+
+  res.status(statusCodes.CREATED).json({
+    success: true,
+    message: "Signup successful",
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      sex: user.sex,
+      department: user.department,
+    },
+  });
 });
 
-var login = asyncHandler(async function (req, res, next) {
-  var validation = validateLoginInput(req.body);
-  if (!validation.ok) return next(httpError(statusCodes.BAD_REQUEST, validation.message));
+let login = asyncHandler(async function (req, res, next) {
+  let validation = validateLoginInput(req.body);
+  if (!validation.ok) {
+    return next(httpError(statusCodes.BAD_REQUEST, validation.message));
+  }
 
-  var data = validation.data;
+  let data = validation.data;
 
-  var user = await User.findOne({ email: data.email }).select("name email sex department profileImage passwordHash");
-  if (!user) return next(httpError(statusCodes.UNAUTHORIZED, "Invalid credentials"));
+  let user = await User.findOne({ email: data.email }).select(
+    "name email sex department profileImage passwordHash"
+  );
 
-  var isMatch = await bcrypt.compare(data.password, user.passwordHash);
-  if (!isMatch) return next(httpError(statusCodes.UNAUTHORIZED, "Invalid credentials"));
+  if (!user) {
+    return next(httpError(statusCodes.UNAUTHORIZED, "Invalid credentials"));
+  }
 
-  // ✅ create token that expires in 12h (JWT_EXPIRES_IN)
-  var token = tokenService.signAuthToken(user._id);
+  let isMatch = await bcrypt.compare(data.password, user.passwordHash);
+  if (!isMatch) {
+    return next(httpError(statusCodes.UNAUTHORIZED, "Invalid credentials"));
+  }
+
+  let token = tokenService.signAuthToken(user._id);
+  setAuthCookie(res, token);
 
   res.status(statusCodes.OK).json({
     success: true,
@@ -194,45 +216,21 @@ var login = asyncHandler(async function (req, res, next) {
       email: user.email,
       sex: user.sex,
       department: user.department,
-      profileImage: user.profileImage && user.profileImage.url ? user.profileImage.url : ""
-    }
+      profileImage: user.profileImage.url,
+    },
   });
 });
 
-var logout = asyncHandler(async function (req, res, next) {
-  // Frontend sends: Authorization: Bearer <token>
-  var auth = req.headers.authorization || "";
-  if (auth.indexOf("Bearer ") !== 0) {
-    return next(httpError(statusCodes.BAD_REQUEST, "Token is required"));
-  }
-
-
-  var token = auth.slice(7).trim();
-  if (!token) return next(httpError(statusCodes.BAD_REQUEST, "Token is required"));
-
-  // decode token to get expiry for TTL collection
-  var decoded = tokenService.decodeAuthToken(token);
-  if (!decoded || !decoded.exp) {
-    return next(httpError(statusCodes.BAD_REQUEST, "Invalid token"));
-  }
-
-  var expiresAt = new Date(decoded.exp * 1000);
-
-  // store token in blacklist so it becomes invalid immediately
-  try {
-    await BlacklistedToken.create({ token: token, expiresAt: expiresAt });
-  } catch (e) {
-    // ignore duplicate blacklist insert
-  }
-
+let logout = function (req, res) {
+  res.clearCookie("authToken", { sameSite: "lax", secure: false });
   res.status(statusCodes.OK).json({
     success: true,
-    message: "Logged out"
+    message: "Logged out",
   });
-});
+};
 
 module.exports = {
   signup: signup,
   login: login,
-  logout: logout
+  logout: logout,
 };
