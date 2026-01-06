@@ -1,5 +1,5 @@
 let constants = {
-  sexOptions: ["male", "female"],
+  sexOptions: ["male", "female","other"],
 
   departments: [
     "Development",
@@ -18,9 +18,9 @@ let constants = {
     "Super Admin",
     "Manager",
     "Lead qualifiers",
-    "Team lead( Lead qualifiers,)",
+    "Team lead(Lead qualifiers,)",
     "data minors",
-    "Team lead (data minors )",
+    "Team lead(data minors )",
     "quality assurance",
     "Team lead(quality assurance)"
   ],

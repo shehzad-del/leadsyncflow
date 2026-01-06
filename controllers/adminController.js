@@ -70,30 +70,10 @@ let rejectRequest = asyncHandler(async function (req, res, next) {
     .json({ success: true, message: "User rejected and deleted" });
 });
 
-// Promote an APPROVED user to SUPER_ADMIN (button action)
-let makeSuperAdmin = asyncHandler(async function (req, res, next) {
-  let userId = req.params.id;
-
-  let user = await User.findById(userId).select("_id status systemRole email");
-  if (!user) return next(httpError(statusCodes.NOT_FOUND, "User not found"));
-
-  if (user.status !== constants.userStatus.APPROVED) {
-    return next(
-      httpError(statusCodes.BAD_REQUEST, "User must be approved first")
-    );
-  }
-
-  user.systemRole = constants.systemRoles.SUPER_ADMIN;
-  await user.save();
-
-  res
-    .status(statusCodes.OK)
-    .json({ success: true, message: "User promoted to SUPER_ADMIN" });
-});
 
 module.exports = {
   getPendingRequests: getPendingRequests,
   approveRequest: approveRequest,
   rejectRequest: rejectRequest,
-  makeSuperAdmin: makeSuperAdmin,
+
 };
