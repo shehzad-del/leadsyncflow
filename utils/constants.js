@@ -1,19 +1,35 @@
-let departments = [
-  'Development',
-  'IT',
-  'Marketing&SEO',
-  'RND',
-  'Quality Assurance',
-  'Sales',
-  'Writing',
-  'Youtube Automation',
-  'Lead Qualifers',
-  'Medical Billing'
-];
+let constants = {
+  sexOptions: ["male", "female"],
 
-let sexOptions = ['male', 'female'];
+  departments: [
+    "Development",
+    "IT",
+    "Marketing&SEO",
+    "RND",
+    "Quality Assurance",
+    "Sales",
+    "Writing",
+    "Youtube Automation",
+    "Lead Qualifers",
+    "Medical Billing"
+  ],
 
-module.exports = {
-  departments: departments,
-  sexOptions: sexOptions
+  roles: [
+    "Super Admin",
+    "Manager",
+    "Lead qualifiers",
+    "Team lead( Lead qualifiers,)",
+    "data minors",
+    "Team lead (data minors )",
+    "quality assurance",
+    "Team lead(quality assurance)"
+  ],
+
+  userStatus: {
+    PENDING: "PENDING",
+    APPROVED: "APPROVED",
+    REJECTED: "REJECTED"
+  }
 };
+
+module.exports = constants;

@@ -3,12 +3,13 @@ let httpError = require("../utils/httpError");
 let tokenService = require("../utils/tokenService");
 
 function getToken(req) {
-  // 1) cookie
-  if (req.cookies && req.cookies.authToken) return req.cookies.authToken;
-
-  // 2) bearer header
   let header = req.headers.authorization || "";
-  if (header.indexOf("Bearer ") === 0) return header.slice(7).trim();
+  header = String(header).trim();
+
+  // allow "bearer" in any case
+  if (header.toLowerCase().indexOf("bearer ") === 0) {
+    return header.slice(7).trim();
+  }
 
   return "";
 }
@@ -19,12 +20,23 @@ module.exports = function requireAuth(req, res, next) {
     return next(httpError(statusCodes.UNAUTHORIZED, "Not authenticated"));
 
   try {
+    console.log("AUTH HEADER:", req.headers.authorization);
+
     let decoded = tokenService.verifyAuthToken(token);
     req.user = { id: decoded.id };
-    next();
+    return next();
   } catch (e) {
-    return next(
-      httpError(statusCodes.UNAUTHORIZED, "Session expired, please login again")
-    );
+    console.log("AUTH VERIFY ERROR:", e && e.message ? e.message : e);
+
+    if (e && e.name === "TokenExpiredError") {
+      return next(
+        httpError(
+          statusCodes.UNAUTHORIZED,
+          "Session expired, please login again"
+        )
+      );
+    }
+
+    return next(httpError(statusCodes.UNAUTHORIZED, "Invalid token"));
   }
 };

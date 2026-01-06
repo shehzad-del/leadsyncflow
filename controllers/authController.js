@@ -7,10 +7,6 @@ let asyncHandler = require("../middlewares/asyncHandler");
 let constants = require("../utils/constants");
 let tokenService = require("../utils/tokenService");
 
-/* =========================
-   Helpers
-========================= */
-
 function safeString(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
@@ -47,22 +43,9 @@ function getSaltRounds() {
   return rounds;
 }
 
-function setAuthCookie(res, token) {
-  let maxAgeMs = 12 * 60 * 60 * 1000; // 12 hours
-
-  res.cookie("authToken", token, {
-    httpOnly: false, // frontend clears it
-    sameSite: "lax",
-    secure: false, // true in production (https)
-    maxAge: maxAgeMs,
-  });
-}
-
-/* =========================
-   Validation
-========================= */
-
 function validateSignupInput(body) {
+  if (!body) return { ok: false, message: "Invalid request body" };
+
   let data = {
     name: safeString(body.name),
     email: safeEmail(body.email),
@@ -71,9 +54,6 @@ function validateSignupInput(body) {
     password: body.password ? String(body.password) : "",
     confirmPassword: body.confirmPassword ? String(body.confirmPassword) : "",
   };
-
-  let sexOptions = constants.sexOptions;
-  let departments = constants.departments;
 
   if (
     !data.name ||
@@ -86,76 +66,56 @@ function validateSignupInput(body) {
     return { ok: false, message: "All fields are required" };
   }
 
-  if (!isValidEmail(data.email)) {
-    return { ok: false, message: "Invalid email" };
-  }
-
-  if (!isAllowedCompanyEmail(data.email)) {
+  if (!isValidEmail(data.email)) return { ok: false, message: "Invalid email" };
+  if (!isAllowedCompanyEmail(data.email))
     return {
       ok: false,
       message: "Only @globaldigitsolutions.com emails are allowed",
     };
-  }
 
-  if (!isInList(data.sex, sexOptions)) {
+  if (!isInList(data.sex, constants.sexOptions))
     return { ok: false, message: "Invalid sex value" };
-  }
-
-  if (!isInList(data.department, departments)) {
+  if (!isInList(data.department, constants.departments))
     return { ok: false, message: "Invalid department value" };
-  }
 
-  if (data.password.length < 6) {
+  if (data.password.length < 6)
     return { ok: false, message: "Password must be at least 6 characters" };
-  }
-
-  if (data.password !== data.confirmPassword) {
+  if (data.password !== data.confirmPassword)
     return { ok: false, message: "Passwords do not match" };
-  }
 
   return { ok: true, data: data };
 }
 
 function validateLoginInput(body) {
+  if (!body) return { ok: false, message: "Invalid request body" };
+
   let data = {
     email: safeEmail(body.email),
     password: body.password ? String(body.password) : "",
   };
 
-  if (!data.email || !data.password) {
+  if (!data.email || !data.password)
     return { ok: false, message: "Email and password are required" };
-  }
-
-  if (!isValidEmail(data.email)) {
-    return { ok: false, message: "Invalid email" };
-  }
-
-  if (!isAllowedCompanyEmail(data.email)) {
+  if (!isValidEmail(data.email)) return { ok: false, message: "Invalid email" };
+  if (!isAllowedCompanyEmail(data.email))
     return {
       ok: false,
       message: "Only @globaldigitsolutions.com emails are allowed",
     };
-  }
 
   return { ok: true, data: data };
 }
 
-/* =========================
-   Controllers
-========================= */
-
 let signup = asyncHandler(async function (req, res, next) {
   let validation = validateSignupInput(req.body);
-  if (!validation.ok) {
+  if (!validation.ok)
     return next(httpError(statusCodes.BAD_REQUEST, validation.message));
-  }
 
   let data = validation.data;
 
   let existing = await User.findOne({ email: data.email }).select("_id");
-  if (existing) {
+  if (existing)
     return next(httpError(statusCodes.CONFLICT, "Email already registered"));
-  }
 
   let passwordHash = await bcrypt.hash(data.password, getSaltRounds());
 
@@ -164,46 +124,51 @@ let signup = asyncHandler(async function (req, res, next) {
     email: data.email,
     sex: data.sex,
     department: data.department,
-    profileImage: { url: "", publicId: "" }, // image later from dashboard
+    // role is assigned on approval
+    
+    // systemRole default USER
+    status: constants.userStatus.PENDING,
     passwordHash: passwordHash,
+    profileImage: { url: "", publicId: "" },
   });
 
   res.status(statusCodes.CREATED).json({
     success: true,
-    message: "Signup successful",
+    message: "Signup request submitted. Waiting for approval.",
     user: {
       id: user._id,
       name: user.name,
       email: user.email,
-      sex: user.sex,
-      department: user.department,
+      status: user.status,
     },
   });
 });
 
 let login = asyncHandler(async function (req, res, next) {
   let validation = validateLoginInput(req.body);
-  if (!validation.ok) {
+  if (!validation.ok)
     return next(httpError(statusCodes.BAD_REQUEST, validation.message));
-  }
 
   let data = validation.data;
 
   let user = await User.findOne({ email: data.email }).select(
-    "name email sex department profileImage passwordHash"
+    "name email passwordHash status role systemRole department sex profileImage"
   );
-
-  if (!user) {
+  if (!user)
     return next(httpError(statusCodes.UNAUTHORIZED, "Invalid credentials"));
+
+  // block login if not approved
+  if (user.status !== constants.userStatus.APPROVED) {
+    return next(
+      httpError(statusCodes.FORBIDDEN, "Your account is not approved yet")
+    );
   }
 
-  let isMatch = await bcrypt.compare(data.password, user.passwordHash);
-  if (!isMatch) {
+  let ok = await bcrypt.compare(data.password, user.passwordHash);
+  if (!ok)
     return next(httpError(statusCodes.UNAUTHORIZED, "Invalid credentials"));
-  }
 
   let token = tokenService.signAuthToken(user._id);
-  setAuthCookie(res, token);
 
   res.status(statusCodes.OK).json({
     success: true,
@@ -216,17 +181,17 @@ let login = asyncHandler(async function (req, res, next) {
       email: user.email,
       sex: user.sex,
       department: user.department,
-      profileImage: user.profileImage.url,
+      role: user.role,
+      systemRole: user.systemRole,
+      profileImage:
+        user.profileImage && user.profileImage.url ? user.profileImage.url : "",
     },
   });
 });
 
+// Stateless logout: frontend removes token
 let logout = function (req, res) {
-  res.clearCookie("authToken", { sameSite: "lax", secure: false });
-  res.status(statusCodes.OK).json({
-    success: true,
-    message: "Logged out",
-  });
+  res.status(statusCodes.OK).json({ success: true, message: "Logged out" });
 };
 
 module.exports = {

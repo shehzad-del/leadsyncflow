@@ -2,12 +2,19 @@ let jwt = require("jsonwebtoken");
 
 function signAuthToken(userId) {
   let secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is missing");
+
   let expiresIn = process.env.JWT_EXPIRES_IN || "12h";
-  return jwt.sign({ id: userId }, secret, { expiresIn: expiresIn });
+
+  // Ensure id is always string
+  return jwt.sign({ id: String(userId) }, secret, { expiresIn: expiresIn });
 }
 
 function verifyAuthToken(token) {
-  return jwt.verify(token, process.env.JWT_SECRET);
+  let secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is missing");
+
+  return jwt.verify(token, secret);
 }
 
 module.exports = {

@@ -1,11 +1,10 @@
-function errorHandler(err, req, res, next) {
-  let status = err.statusCode || 500;
-  let message = err.message || 'Server error';
+let statusCodes = require("../utils/statusCodes");
 
-  res.status(status).json({
+module.exports = function errorHandler(err, req, res, next) {
+  let code = err.statusCode || statusCodes.INTERNAL_SERVER_ERROR;
+
+  res.status(code).json({
     success: false,
-    message: message
+    message: err.message || "Server error"
   });
-}
-
-module.exports = errorHandler;
+};
